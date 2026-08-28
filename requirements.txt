@@ -1,0 +1,23 @@
+# Базові залежності
+numpy>=1.26
+opencv-python>=4.9
+pyyaml>=6.0
+pillow>=10.0
+
+# Детекція
+ultralytics>=8.3
+
+# Перекодування відео в H.264 (experiments/to_h264.py).
+# Тягне власний статичний бінарник ffmpeg: OpenCV на цій машині
+# пише лише FMP4, який відкривається не всіма плеєрами.
+imageio-ffmpeg>=0.5
+
+# УВАГА: torch ставиться ОКРЕМО, під версію драйвера NVIDIA.
+# Драйвер 535 підтримує CUDA <= 12.2, тому потрібна збірка cu121.
+# Свіжий torch з PyPI зібраний під cu130 і на цьому драйвері
+# мовчки працює на CPU без повідомлення про помилку.
+#
+#   pip install -r requirements-cuda.txt \
+#       --index-url https://download.pytorch.org/whl/cu121
+#
+# Перевірка:  python -c "import torch; print(torch.cuda.is_available())"
