@@ -38,7 +38,6 @@ def main() -> int:
 
     sq = args.square_px
     bw, bh = args.cols * sq, args.rows * sq
-    # Біле поле навколо дошки — findChessboardCorners його вимагає.
     pad = sq
     img = np.full((bh + 2 * pad, bw + 2 * pad), 255, np.uint8)
     for r in range(args.rows):

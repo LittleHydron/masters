@@ -22,7 +22,6 @@ PHASE_COLORS = {
 
 def draw_detection(img: np.ndarray, det: Detection | None) -> None:
     h, w = img.shape[:2]
-    # Перехрестя центру кадру — опорна точка для IBVS.
     cv2.drawMarker(img, (w // 2, h // 2), (200, 200, 200),
                    cv2.MARKER_CROSS, 22, 1)
 
@@ -40,7 +39,6 @@ def draw_detection(img: np.ndarray, det: Detection | None) -> None:
 
     cx, cy = det.center
     cv2.drawMarker(img, (int(cx), int(cy)), (0, 235, 255), cv2.MARKER_TILTED_CROSS, 16, 2)
-    # Вектор помилки — те, що гасить контролер.
     cv2.arrowedLine(img, (w // 2, h // 2), (int(cx), int(cy)),
                     (0, 235, 255), 1, tipLength=0.15)
 
@@ -75,7 +73,6 @@ def draw_panel(frame: np.ndarray, det: Detection | None, cmd: ControlCommand,
     draw_detection(img, det)
 
     h, w = img.shape[:2]
-    # Напівпрозора підкладка, щоб текст читався на будь-якому фоні.
     overlay = img.copy()
     cv2.rectangle(overlay, (0, 0), (270, 132), (25, 25, 25), -1)
     cv2.addWeighted(overlay, 0.72, img, 0.28, 0, img)

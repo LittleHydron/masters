@@ -19,9 +19,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-# Ім'я збережених ваг = базове + суфікс з --tag: yolov8n_mixed.pt тощо.
-# Фіксоване ім'я тут було б пасткою: прогін на іншому датасеті
-# мовчки перезаписав би ваги попереднього.
 MODELS = {
     "yolov8n": ("yolov8n.pt", "yolov8n"),
     "yolov11n": ("yolo11n.pt", "yolo11n"),
@@ -47,7 +44,7 @@ def train_one(key: str, data: str, epochs: int, imgsz: int, batch: int,
         batch=batch,
         device=device,
         workers=workers,
-        seed=seed,          # однаковий seed для обох моделей
+        seed=seed,
         deterministic=True,
         project=str(out_dir / "runs"),
         name=key,
@@ -55,27 +52,13 @@ def train_one(key: str, data: str, epochs: int, imgsz: int, batch: int,
         patience=30,
         val=True,
         plots=True,
-        # Аугментація ВІДТІНКУ. Типове 0.015 = зсув лише +-2.7 град зі
-        # 180 — практично нуль, тоді як насиченість і яскравість
-        # варіюються на 70% і 40%.
-        #
-        # На реальному відео (сцена Room, тепла жовта стіна) модель не
-        # бачила червоний обруч ВЗАГАЛІ. Зсув відтінку фону на +60 у
-        # тих самих кадрах підняв детекцію з 26% до 98% — тобто
-        # відтінок і був вирішальним чинником, а модель його ніколи
-        # не варіювала ні в даних, ні в аугментації.
         hsv_h=hsv_h,
-        # AMP на GTX 1650 дає скромний приріст (Turing без повноцінних
-        # tensor cores), але економить VRAM — при 4 ГБ це вирішальне.
         amp=True,
     )
     elapsed = time.perf_counter() - start
 
     metrics = model.val(data=data, imgsz=imgsz, device=device, verbose=False)
 
-    # Ultralytics ігнорує відносний project і кладе прогін у
-    # runs/detect/<project>/<name>. Питаємо шлях у самого тренера,
-    # а не вгадуємо — інакше копіювання мовчки пропускається.
     best = None
     save_dir = getattr(getattr(model, "trainer", None), "save_dir", None)
     if save_dir:
@@ -126,7 +109,6 @@ def main() -> int:
                     choices=list(MODELS))
     ap.add_argument("--epochs", type=int, default=120)
     ap.add_argument("--imgsz", type=int, default=640)
-    # 16 має влізти в 4 ГБ на nano-моделях; при OOM зменшіть до 8.
     ap.add_argument("--batch", type=int, default=16)
     ap.add_argument("--device", default="0", help="'0' для GPU, 'cpu' для CPU")
     ap.add_argument("--workers", type=int, default=4)

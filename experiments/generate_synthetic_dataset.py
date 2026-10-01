@@ -27,7 +27,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.synth.hoop_renderer import HoopSpec, render_hoop, look_at_normal
 from src.synth.backgrounds import load_real_backgrounds, prepare_background
 
-# Кольори, які реально годяться для цілі (BGR).
 COLOR_PRESETS = {
     "red": (40, 40, 200),
     "orange": (30, 110, 240),
@@ -50,17 +49,14 @@ def photometric_aug(img: np.ndarray, rng: np.random.Generator) -> np.ndarray:
     """
     out = img.astype(np.float32)
 
-    # Яскравість і контраст.
     out = out * rng.uniform(0.6, 1.4) + rng.uniform(-30, 30)
 
-    # Кольорова температура: тепла лампа vs денне світло.
     temp = rng.uniform(-25, 25)
-    out[:, :, 0] -= temp   # синій
-    out[:, :, 2] += temp   # червоний
+    out[:, :, 0] -= temp
+    out[:, :, 2] += temp
 
     out = np.clip(out, 0, 255).astype(np.uint8)
 
-    # Змазування руху — на реальному польоті кадри рідко різкі.
     if rng.random() < 0.35:
         k = int(rng.integers(3, 13)) | 1
         kernel = np.zeros((k, k), np.float32)
@@ -75,17 +71,14 @@ def photometric_aug(img: np.ndarray, rng: np.random.Generator) -> np.ndarray:
         if s > 0:
             out = cv2.filter2D(out, -1, kernel / s)
 
-    # Розфокус.
     if rng.random() < 0.25:
         k = int(rng.integers(3, 9)) | 1
         out = cv2.GaussianBlur(out, (k, k), 0)
 
-    # Сенсорний шум.
     if rng.random() < 0.5:
         noise = rng.normal(0, rng.uniform(2, 12), out.shape)
         out = np.clip(out.astype(np.float32) + noise, 0, 255).astype(np.uint8)
 
-    # Компресія JPEG — відеопотік Tello стиснений.
     if rng.random() < 0.4:
         q = int(rng.integers(35, 92))
         ok, enc = cv2.imencode(".jpg", out, [cv2.IMWRITE_JPEG_QUALITY, q])
@@ -99,17 +92,10 @@ def sample_pose(rng: np.random.Generator, spec: HoopSpec,
                 min_d: float, max_d: float,
                 near_ratio: float = 0.0) -> tuple[np.ndarray, np.ndarray]:
     """Випадкова поза обруча, зміщена до типового підльоту."""
-    # Ближня зона окремо. Без цього beta(1.6,2.6) дає лише ~6% кадрів
-    # ближче 0.8 м, і обруч ПРАКТИЧНО НІКОЛИ не зрізається краєм:
-    # у синтетиці v1 `visible_ratio < 1.0` траплявся у 0.0% кадрів.
-    # На реальному відео саме такий ракурс (обруч на весь кадр, видно
-    # лише дугу) детектор не бачив зовсім — а це момент прольоту,
-    # де ціна помилки найвища.
     if rng.random() < near_ratio:
         dist = float(rng.uniform(min_d, min(0.85, max_d)))
     else:
         dist = float(min_d + (max_d - min_d) * rng.beta(1.6, 2.6))
-    # Бічне зміщення тим менше, чим ближче — як у реальному підльоті.
     spread = 0.55 * (dist / max_d)
     x = float(rng.normal(0, spread))
     y = float(rng.normal(0, spread * 0.6))
@@ -174,8 +160,6 @@ def main() -> int:
         bg_path = bg_paths[int(rng.integers(len(bg_paths)))] if bg_paths else None
         bg = prepare_background(bg_path, args.width, args.height, rng)
 
-        # Негативні приклади: сцена без цілі. Без них модель
-        # схильна знаходити обруч там, де його немає.
         if rng.random() < args.empty_ratio:
             img = photometric_aug(bg, rng)
             name = f"synth_{made:06d}"
@@ -186,7 +170,6 @@ def main() -> int:
             continue
 
         color = COLOR_PRESETS[args.colors[int(rng.integers(len(args.colors)))]]
-        # Варіація відтінку: реальний обруч не має рівно того кольору.
         color = tuple(int(np.clip(c + rng.normal(0, 16), 0, 255)) for c in color)
         spec = HoopSpec(diameter=args.diameter, tube_diameter=args.tube,
                         color_bgr=color)

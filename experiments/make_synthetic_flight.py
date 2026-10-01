@@ -42,15 +42,10 @@ def render(path: str, w=960, h=720, fps=30, n=240, diameter=0.60,
     sx, sy, sz = start
     for i in range(n):
         s = i / max(1, n - 1)
-        # Обруч стоїть у нулі; камера підлітає до нього вздовж -z,
-        # поступово гасячи бічний зсув. Позиція обруча в системі
-        # камери = ring - cam, тому cam.z має бути від'ємним.
         cam = np.array([sx * (1 - s) ** 1.5, sy * (1 - s) ** 1.5,
                         -(sz * (1 - s) + 0.35 * s)])
 
         img = np.full((h, w, 3), 38, np.uint8)
-        # Фон із текстурою — щоб контурний детектор мав завади,
-        # інакше тест був би нечесно легким.
         rng = np.random.default_rng(i)
         for _ in range(45):
             x, y = rng.integers(0, w), rng.integers(0, h)

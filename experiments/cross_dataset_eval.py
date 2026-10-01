@@ -84,21 +84,12 @@ def main() -> int:
     ap.add_argument("--out", default="experiments/results")
     args = ap.parse_args()
 
-    # Три різні за змістом перевірки:
-    #  - рідний тест: чи вивчилась модель узагалі
-    #  - synth_holdout: перенос на ІНШИЙ обруч тієї ж природи
-    #    (діаметр 1.20 м, товща трубка, інші кольори)
-    #  - notedetection/note_detection: перенос на ІНШИЙ ТИП об'єкта
-    #    (товсті кільця FRC згори) — інша задача, не змішувати в одну
-    #    середню з holdout
     targets = [
         ("рідний тест (okmii)", Path("datasets/hoops/test")),
         ("synth_holdout", Path("datasets/synthetic_holdout/test")),
         ("notedetection", Path("datasets/xval/notedetection/test")),
         ("note_detection", Path("datasets/xval/note_detection/test")),
     ]
-    # Кожен тег — окремий варіант навчання того самого детектора.
-    # Порівняння hoop/dedup/mixed показує, що дала синтетика.
     models = {}
     for tag in args.tags:
         for key, stem in (("yolov8n", "yolov8n"), ("yolov11n", "yolo11n")):

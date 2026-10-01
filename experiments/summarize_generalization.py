@@ -14,9 +14,6 @@ import argparse
 import json
 from pathlib import Path
 
-# Три категорії перевірок — НЕ змішувати в одну середню.
-#  HOLDOUT — інший обруч тієї ж природи (те, що потрібно роботі)
-#  CROSS   — інший ТИП об'єкта: кільця FRC згори (ширша перевірка)
 HOLDOUT = ("synth_holdout",)
 CROSS = ("notedetection", "note_detection")
 
@@ -41,7 +38,6 @@ def main() -> int:
     for p in args.json:
         rows.extend(json.loads(Path(p).read_text(encoding="utf-8")))
 
-    # Групуємо за моделлю: рідний F1 vs середній чужий F1.
     by_model: dict[str, dict] = {}
     for r in rows:
         m = by_model.setdefault(r["model"],
@@ -64,7 +60,6 @@ def main() -> int:
         dc = (nat - cross) / nat * 100 if cross is not None and nat else None
         table.append((name, nat, hold, dh, cross, dc))
 
-    # Сортуємо за падінням на holdout — головна цифра роботи.
     table.sort(key=lambda t: (t[3] is None, t[3] if t[3] is not None else 0))
     fmt = lambda v, suf="": f"{v:.3f}{suf}" if v is not None else "—"
     for name, nat, hold, dh, cross, dc in table:

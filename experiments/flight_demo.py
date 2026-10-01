@@ -73,8 +73,6 @@ def draw_map(w: int, h: int, trail: list[np.ndarray], cam: np.ndarray,
              radius: float) -> np.ndarray:
     """Вигляд згори: траєкторія й обруч у площині XZ."""
     m = np.full((h, w, 3), 26, np.uint8)
-    # Межі сцени в метрах -> пікселі.
-    # Межі підбираємо під траєкторію: старт буває на 4-5 м позаду.
     span_x, z_min, z_max = 4.0, -6.0, 1.5
     def px(p):
         x = int(w / 2 + p[0] / span_x * (w / 2 - 20))
@@ -83,7 +81,6 @@ def draw_map(w: int, h: int, trail: list[np.ndarray], cam: np.ndarray,
 
     cv2.putText(m, "vyd zverhu", (10, 20), cv2.FONT_HERSHEY_SIMPLEX,
                 0.45, (150, 150, 150), 1)
-    # Обруч: відрізок у площині XZ, перпендикулярний нормалі.
     perp = np.array([-hoop_normal[2], 0.0, hoop_normal[0]])
     n = np.linalg.norm(perp)
     if n > 1e-6:
@@ -129,16 +126,12 @@ def main() -> int:
     radius = args.diameter / 2.0
     rng = np.random.default_rng(args.seed)
 
-    # Обруч стоїть у нулі, нахилений навколо вертикалі.
     t = np.deg2rad(args.tilt)
     hoop_pos = np.zeros(3)
     hoop_normal = np.array([np.sin(t), 0.0, np.cos(t)])
     spec = HoopSpec(diameter=args.diameter, tube_diameter=0.020,
                     color_bgr=(40, 40, 200))
 
-    # Фон фіксований на весь політ — інакше сцена «мерехтить».
-    # Кола-відволікачі вимкнені: у навчанні вони корисні, а в демці
-    # глядач приймає великий овал за другий обруч.
     background = procedural_room(w, h, rng, distractor_circles=False).astype(np.uint8)
 
     solver = PnPSolver(K, target_diameter=args.diameter)
@@ -175,11 +168,9 @@ def main() -> int:
         trail.append(cam.copy())
         rel_pos, rel_n = world_to_cam(hoop_pos, hoop_normal, drone)
 
-        # Рендер кадру з поточної позиції.
         res = render_hoop(background, K, rel_pos, rel_n, spec, rng=rng)
         frame = res.image if res is not None else background.copy()
 
-        # СПРАВЖНЯ детекція.
         pred = model.predict(frame, conf=args.conf, verbose=False,
                              device=args.device)
         boxes = pred[0].boxes
@@ -198,7 +189,6 @@ def main() -> int:
         cmds = {n: c.update(det, (h, w), dt) for n, c in ctrls.items()}
         cmd = cmds[args.controller]
 
-        # Малюємо кадр.
         canvas = np.zeros((h, w + PANEL_W, 3), np.uint8)
         canvas[:, :w] = frame
         if det is not None:
@@ -255,7 +245,6 @@ def main() -> int:
                      "forward": round(cmd.forward, 4),
                      "vertical": round(cmd.vertical, 4)})
 
-        # Рух.
         drone.step(cmd, dt)
         side = float(drone.p @ hoop_normal)
         if prev_side < 0 <= side:
@@ -264,7 +253,6 @@ def main() -> int:
             radial = float(np.linalg.norm(hit - hoop_normal * float(hit @ hoop_normal)))
             outcome = "PROLIT" if radial < radius else "PROMAH"
             print(f"  крок {step}: {outcome}, промах {radial - radius:+.2f} м")
-            # Кілька кадрів після перетину — щоб у відео було видно фінал.
             for _ in range(15):
                 writer.write(canvas)
             break

@@ -68,14 +68,10 @@ def load_gt(label_path: Path, w: int, h: int) -> list[tuple[float, float, float,
             continue
         coords = [float(v) for v in parts[1:]]
         if len(coords) == 4:
-            # Класичний bbox: cx cy w h.
             cx, cy, bw, bh = coords
             x1, y1 = cx - bw / 2, cy - bh / 2
             x2, y2 = cx + bw / 2, cy + bh / 2
         elif len(coords) >= 6 and len(coords) % 2 == 0:
-            # Полігон сегментації: x1 y1 x2 y2 ... -> обгортковий bbox.
-            # Без цього перші чотири координати контуру читалися б як
-            # cx cy w h і давали зміщений бокс (IoU ~0.2 з правильним).
             xs, ys = coords[0::2], coords[1::2]
             x1, y1, x2, y2 = min(xs), min(ys), max(xs), max(ys)
         else:
@@ -102,7 +98,6 @@ def iou(a, b) -> float:
 def evaluate(detector, images: list[Path], label_dir: Path | None,
              iou_thr: float = 0.5, warmup: int = 5) -> dict:
     """Прогнати детектор і зібрати точність + час інференсу."""
-    # Прогрів: перші виклики YOLO аномально повільні й отруюють середнє.
     if images:
         probe = cv2.imread(str(images[0]))
         if probe is not None:

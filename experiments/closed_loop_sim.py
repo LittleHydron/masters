@@ -33,6 +33,7 @@ from src.control.hybrid import HybridController
 from src.control.ibvs import IBVSController
 from src.control.pbvs import PBVSController
 from src.detection.base import Detection, TargetShape
+from src.control.latency import make_predictor
 from src.pose.pnp_solver import PnPSolver
 from src.sim.dynamics import DroneModel, DroneParams
 from src.sim.detector_noise import NoiseParams, apply as apply_noise
@@ -93,15 +94,9 @@ def detect(cam: np.ndarray, ring: np.ndarray, K: np.ndarray,
         return None
     x1, y1 = uv.min(axis=0)
     x2, y2 = uv.max(axis=0)
-    # Ціль має бути хоч частково в кадрі й не виродженою.
     if x2 < 0 or y2 < 0 or x1 > w or y1 > h or (x2 - x1) < 4 or (y2 - y1) < 4:
         return None
 
-    # Еліпс через МНК по спроєктованих точках, а не з габаритів bbox.
-    # Нахилений обруч проєктується в НАХИЛЕНИЙ еліпс; якщо підмінити
-    # його осесиметричним прямокутником (кут 0, осі = ширина/висота
-    # bbox), розклад коніки відновить хибну нормаль — і PBVS керуватиме
-    # за сміттям. Саме тут ховалась «непрацездатність» PBVS.
     ell = cv2.fitEllipse(uv.astype(np.float32))
     return Detection(
         bbox=(float(x1), float(y1), float(x2), float(y2)),
@@ -125,9 +120,6 @@ def run_trial(ctrl, cam0: np.ndarray, normal: np.ndarray, radius: float,
     noise = noise or NoiseParams(enabled=False)
     drone = DroneModel(cam0, params or DroneParams(), rng)
     cam = drone.p
-    # Знакова відстань до площини обруча. Камера стартує ПЕРЕД обручем,
-    # тобто з від'ємного боку (cam.z < 0 при normal=(0,0,1)), і летить
-    # у бік додатного. Перетин = зміна знаку з - на +.
     prev_side = float(cam @ normal)
     effort = 0.0
     lost = 0
@@ -135,9 +127,6 @@ def run_trial(ctrl, cam0: np.ndarray, normal: np.ndarray, radius: float,
     jitter = 0.0
 
     for step in range(max_steps):
-        # Детекція — у системі КАМЕРИ: враховуємо і позицію, і курс.
-        # Без повороту обліт неможливий: бічний рух виводив би ціль
-        # за межі кадру.
         ring_cam = np.array([drone.rotate_to_camera(pt - drone.p) for pt in ring])
         det = detect_local(ring_cam, K, w, h)
         det = apply_noise(det, float(np.linalg.norm(cam)), rng, noise)
@@ -153,14 +142,11 @@ def run_trial(ctrl, cam0: np.ndarray, normal: np.ndarray, radius: float,
                        + abs(cmd.vertical - prev_cmd.vertical))
         prev_cmd = cmd
 
-        # Динаміка: інерція + затримка замість миттєвого переміщення.
         drone.step(cmd, dt)
         cam = drone.p
 
         side = float(cam @ normal)
         if prev_side < 0 <= side:
-            # Точка перетину: лінійна інтерполяція між кадрами, інакше
-            # промах міряється не в площині обруча.
             a = prev_side / (prev_side - side) if prev_side != side else 0.0
             hit = prev_cam + (cam - prev_cam) * a
             radial = float(np.linalg.norm(hit - normal * float(hit @ normal)))
@@ -196,8 +182,6 @@ def main() -> int:
                     help="макс. швидкість, м/с (Tello ~1.5 у режимі rc)")
     ap.add_argument("--max-steps", type=int, default=2400,
                     help="ліміт кроків на спробу (2400 = 80 с при 30 fps)")
-    # Три ефекти вмикаються ОКРЕМО — інакше не видно, який з них
-    # що дає. Типово всі увімкнені (реалістичний режим).
     ap.add_argument("--latency", type=float, default=0.20,
                     help="затримка керування, с (0 = вимкнути)")
     ap.add_argument("--max-accel", type=float, default=2.5,
@@ -212,6 +196,10 @@ def main() -> int:
     ap.add_argument("--ideal", action="store_true",
                     help="вимкнути ВСЕ: ідеальна кінематика й детектор "
                          "(режим старого стенду, для порівняння)")
+    ap.add_argument("--compensate", default="none",
+                    choices=["none", "linear", "kalman"],
+                    help="компенсація латентності: екстраполювати "
+                         "спостереження вперед на --latency секунд")
     ap.add_argument("--out", default="experiments/results_hybrid")
     args = ap.parse_args()
 
@@ -220,8 +208,6 @@ def main() -> int:
     radius = args.diameter / 2.0
     rng = np.random.default_rng(args.seed)
 
-    # Однакові стартові умови для всіх стратегій — інакше порівняння
-    # перетворилось би на порівняння везіння.
     starts = []
     for _ in range(args.trials):
         tilt = np.deg2rad(rng.uniform(-35, 35))
@@ -234,12 +220,17 @@ def main() -> int:
 
     def make(kind):
         s = PnPSolver(K, target_diameter=args.diameter)
+        def kw():
+            return {"predictor": make_predictor(args.compensate, 2),
+                    "latency": args.latency}
+
         if kind == "ibvs":
-            return IBVSController()
+            return IBVSController(**kw())
         if kind == "pbvs":
-            return PBVSController(s)
-        return HybridController(PBVSController(PnPSolver(K, target_diameter=args.diameter)),
-                                IBVSController(), switch_distance=args.switch_distance)
+            return PBVSController(s, **kw())
+        return HybridController(
+            PBVSController(PnPSolver(K, target_diameter=args.diameter), **kw()),
+            IBVSController(**kw()), switch_distance=args.switch_distance)
 
     if args.ideal:
         params = DroneParams(max_speed=args.speed, max_accel=1e6,
@@ -258,8 +249,6 @@ def main() -> int:
     rows = []
     for kind in ("ibvs", "pbvs", "hybrid"):
         for i, (cam0, normal) in enumerate(starts):
-            # Свій RNG на спробу: усі стратегії отримують ОДНАКОВІ
-            # реалізації шуму, інакше порівняння стане лотереєю.
             r = run_trial(make(kind), cam0, normal, radius, K, w, h,
                           speed=args.speed, max_steps=args.max_steps,
                           params=params, noise=noise,

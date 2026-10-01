@@ -17,8 +17,9 @@ class HybridController(BaseController):
         ibvs: IBVSController,
         switch_distance: float = 2.0,
         max_speed: float = 0.4,
+        **kw,
     ) -> None:
-        super().__init__(max_speed=max_speed)
+        super().__init__(max_speed=max_speed, **kw)
         self.pbvs = pbvs
         self.ibvs = ibvs
         self.switch_distance = switch_distance

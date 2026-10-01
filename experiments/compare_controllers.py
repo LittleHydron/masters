@@ -92,9 +92,6 @@ def main() -> int:
 
     ibvs = IBVSController()
     pbvs = PBVSController(solver)
-    # Гібриду потрібні ОКРЕМІ екземпляри: якби він ділив їх із ibvs/pbvs,
-    # внутрішній стан (ПІД, лічильники фаз) оновлювався б двічі за кадр
-    # і порівняння втратило б сенс.
     hybrid = HybridController(
         PBVSController(PnPSolver(K, target_diameter=args.diameter,
                                  target_size=tuple(args.target_size))),
@@ -210,7 +207,6 @@ def summarise(rows: list[dict]) -> None:
 
         mags = [abs(r["lateral"]) + abs(r["forward"])
                 + abs(r["vertical"]) + abs(r["yaw"]) for r in sub]
-        # Смикання: середня зміна команди між сусідніми кадрами.
         jitter = float(np.mean([
             abs(sub[i]["lateral"] - sub[i - 1]["lateral"])
             + abs(sub[i]["forward"] - sub[i - 1]["forward"])

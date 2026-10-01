@@ -26,7 +26,6 @@ def convert(src: Path, crf: int, scale: int | None) -> Path | None:
     if scale:
         cmd += ["-vf", f"scale={scale}:-2"]
     cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", str(crf),
-            # yuv420p — інакше частина плеєрів і браузерів не покаже
             "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(dst)]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode:

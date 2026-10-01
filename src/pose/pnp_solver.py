@@ -12,9 +12,9 @@ from ..detection.base import Detection, TargetShape
 class PoseEstimate:
     """Поза цілі у системі координат камери. Відстані в метрах."""
 
-    position: np.ndarray        # (3,) вектор на центр цілі
-    normal: np.ndarray          # (3,) одинична нормаль площини цілі
-    rotation: np.ndarray | None = None  # (3,3), лише для RECTANGLE
+    position: np.ndarray
+    normal: np.ndarray
+    rotation: np.ndarray | None = None
     reprojection_error: float = 0.0
     is_ambiguous: bool = False
     alternative: "PoseEstimate | None" = None

@@ -42,12 +42,12 @@ class DroneParams:
         й назад, обробка. Для Tello по Wi-Fi реально 0.15-0.30 с.
     """
 
-    max_speed: float = 1.2          # м/с на канал
-    max_yaw_rate: float = 1.2       # рад/с — поворот навколо вертикалі
-    max_accel: float = 2.5          # м/с² — підтягування до цілі
-    latency: float = 0.20           # с — затримка команди
-    drag: float = 0.35              # 1/с — гальмування при нульовій команді
-    speed_noise: float = 0.02       # м/с — неідеальність приводу
+    max_speed: float = 1.2
+    max_yaw_rate: float = 1.2
+    max_accel: float = 2.5
+    latency: float = 0.20
+    drag: float = 0.35
+    speed_noise: float = 0.02
 
 
 class DroneModel:
@@ -66,7 +66,6 @@ class DroneModel:
                  rng: np.random.Generator | None = None) -> None:
         self.p = np.asarray(position, dtype=float).copy()
         self.v = np.zeros(3)
-        # Курс у радіанах: 0 = камера дивиться вздовж +z світу.
         self.yaw = 0.0
         self.params = params or DroneParams()
         self.rng = rng or np.random.default_rng(0)
@@ -84,29 +83,22 @@ class DroneModel:
         """Застосувати команду з урахуванням затримки та інерції."""
         pr = self.params
 
-        # Курс змінюється одразу (поворот швидший за переміщення).
         self.yaw += float(cmd.yaw) * pr.max_yaw_rate * dt
 
-        # Команда -> цільова швидкість у ВЛАСНІЙ системі дрона,
-        # далі повертаємо її у світову за поточним курсом.
         local = np.array([cmd.lateral, -cmd.vertical, cmd.forward]) * pr.max_speed
         c, sn = np.cos(self.yaw), np.sin(self.yaw)
         target = np.array([c * local[0] + sn * local[2],
                            local[1],
                            -sn * local[0] + c * local[2]])
 
-        # Затримка: скільки кроків тримати команду в черзі.
         if self._delay_steps is None:
             self._delay_steps = max(0, int(round(pr.latency / dt)))
         self._queue.append(target)
         if len(self._queue) > self._delay_steps:
             applied = self._queue.popleft()
         else:
-            # Контур ще не «прогрітий» — дрон стоїть, команди в дорозі.
             applied = np.zeros(3)
 
-        # Інерція: підтягуємо фактичну швидкість до цільової з
-        # обмеженим прискоренням.
         dv = applied - self.v
         step_limit = pr.max_accel * dt
         n = float(np.linalg.norm(dv))
@@ -114,7 +106,6 @@ class DroneModel:
             dv = dv / n * step_limit
         self.v = self.v + dv
 
-        # Гальмування й неідеальність приводу.
         self.v *= max(0.0, 1.0 - pr.drag * dt)
         if pr.speed_noise > 0:
             self.v = self.v + self.rng.normal(0, pr.speed_noise, 3) * dt

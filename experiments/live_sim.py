@@ -60,8 +60,6 @@ def draw_scene(w: int, h: int, cam: np.ndarray, trail: list,
     насправді показана дальність.
     """
     img = np.full((h, w, 3), 22, np.uint8)
-    # Шрифти й товщини масштабуємо від висоти панелі, щоб скріншот
-    # лишався читабельним і на 480, і на 900 px.
     k = h / 480.0
     x0, z0, x1, z1 = -3.0, -6.0, 3.0, 1.5
 
@@ -70,7 +68,6 @@ def draw_scene(w: int, h: int, cam: np.ndarray, trail: list,
         y = int(h - 40 - (p[2] - z0) / (z1 - z0) * (h - 80))
         return x, y
 
-    # Сітка з підписами метрів — щоб було видно масштаб.
     for zz in range(-6, 2):
         y = px(np.array([0, 0, zz]))[1]
         cv2.line(img, (18, y), (w - 18, y), (40, 40, 40), 1)
@@ -81,7 +78,6 @@ def draw_scene(w: int, h: int, cam: np.ndarray, trail: list,
         x = px(np.array([xx, 0, 0]))[0]
         cv2.line(img, (x, 20), (x, h - 24), (40, 40, 40), 1)
 
-    # Обруч — відрізок, перпендикулярний нормалі.
     perp = np.array([-hoop_normal[2], 0.0, hoop_normal[0]])
     n = np.linalg.norm(perp)
     if n > 1e-6:
@@ -99,7 +95,6 @@ def draw_scene(w: int, h: int, cam: np.ndarray, trail: list,
     for p, q in zip(trail, trail[1:]):
         cv2.line(img, px(p), px(q), (80, 170, 230), max(2, int(2.5 * k)))
 
-    # Дрон.
     c = px(cam)
     cv2.circle(img, c, int(10 * k), (255, 255, 255), -1)
     cv2.circle(img, c, int(16 * k), (200, 200, 200), max(1, int(k)))
@@ -185,21 +180,9 @@ def main() -> int:
             t = np.deg2rad(tilt_deg)
             normal = np.array([np.sin(t), 0.0, np.cos(t)])
         else:
-            # Еліптичність обруча в кадрі задає кут між його нормаллю
-            # та ОПТИЧНОЮ ВІССЮ камери (тут вона завжди +z), а не
-            # напрямком на ціль: камера в цій моделі не повертається,
-            # тож бічне зміщення саме по собі обруч не «сплющує».
-            #
-            # Раніше я рахував кут до напрямку на обруч — і виходила
-            # нісенітниця: при нахилі 0° «кут огляду 26°», а проєкція
-            # ідеальне коло (a/b = 1.00). Тепер нахил ЗАДАЄ еліптичність
-            # напряму: a/b = cos(tilt).
             start = np.array([rng.uniform(-1.6, 1.6),
                               rng.uniform(-0.6, 0.6),
                               -rng.uniform(2.2, 3.6)])
-            # Виміряно: при 25° сплющення практично невидиме
-            # (a/b = 0.95), при 40° a/b = 0.83, при 55° a/b = 0.66.
-            # Перспектива послаблює ефект, тому беремо 30-58°.
             tilt_deg = float(30 + 28 * rng.beta(1.8, 1.2))
             if rng.random() < 0.5:
                 tilt_deg = -tilt_deg
@@ -214,7 +197,6 @@ def main() -> int:
         }
         drone = DroneModel(start, DroneParams(max_speed=args.speed,
                                              latency=args.latency), rng)
-        # Кут до оптичної осі (+z) — саме він визначає еліптичність.
         got = np.degrees(np.arccos(np.clip(abs(float(normal[2])), 0, 1)))
         print(f"  нова сцена: нахил {got:.0f}° (a/b={np.cos(np.deg2rad(got)):.2f}), "
               f"старт [{start[0]:+.2f} {start[1]:+.2f} {start[2]:+.2f}], seed {seed}")
@@ -240,10 +222,6 @@ def main() -> int:
         if not paused and not status:
             cam = drone.p.copy()
             trail.append(cam.copy())
-            # Обруч у нулі; враховуємо і позицію, і КУРС дрона.
-            # Без повороту картинка не відповідала б стану дрона:
-            # він обертається під час обльоту, а камера дивилась би
-            # завжди вздовж +z, і контролер отримував би хибний ракурс.
             rel = drone.to_camera(np.zeros(3))
             rel_n = drone.rotate_to_camera(hoop_normal)
             res = render_hoop(background, K, rel, rel_n, spec, rng=rng)
@@ -282,7 +260,6 @@ def main() -> int:
         else:
             continue
 
-        # --- камера дрона ---
         kk = h / 480.0
         view = frame.copy()
         if det is not None:
@@ -299,7 +276,6 @@ def main() -> int:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65 * kk, (180, 180, 180),
                     max(1, int(1.4 * kk)))
 
-        # --- панель ---
         panel = np.full((h, panel_w, 3), 18, np.uint8)
         F = cv2.FONT_HERSHEY_SIMPLEX
         cv2.putText(panel, f"frame {step}", (int(18 * kk), int(38 * kk)),
@@ -319,12 +295,7 @@ def main() -> int:
             cv2.putText(panel, "NO TARGET", (int(18 * kk), int(124 * kk)),
                         F, 1.0 * kk, (70, 70, 235), max(2, int(2.6 * kk)))
 
-        # Крок блоку рахуємо від висоти: інакше на низькому вікні
-        # третій контролер налазить на підказки внизу.
         y0 = int(h * 0.38)
-        # Блок = заголовок + фаза + команди (58*kk) плюс проміжок,
-        # інакше назва наступного контролера налазить на попередні
-        # команди — так було на першій версії великого вікна.
         step_y = max(int(88 * kk), int((h - y0 - int(80 * kk)) / 3))
         y = y0
         for name in ORDER:
@@ -358,7 +329,6 @@ def main() -> int:
                            radius, status)
         cv2.imshow(win, np.hstack([scene, view, panel]))
 
-        # Темп показу.
         delay = max(1, int((1.0 / args.fps - (time.perf_counter() - frame_start)) * 1000))
         key = cv2.waitKey(delay if not paused else 30) & 0xFF
         if key in (ord("q"), 27):

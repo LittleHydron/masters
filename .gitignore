@@ -1,25 +1,27 @@
-# Оточення
 .venv/
 __pycache__/
 *.py[cod]
 
-# Датасети та ваги — великі бінарні файли, у git не місце.
-# Датасет качається з Roboflow (посилання в README).
 datasets/
 models/*.pt
 *.pt
-!yolov8n.pt.placeholder
-
-# Результати навчання
-experiments/results*/
-experiments/detections/*
 runs/
 
-# Великі артефакти експериментів
-experiments/results/*.mp4
-*.mp4
+experiments/results*/
+experiments/detections/*
 
-# Системне
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+!calibration/pattern_a4.png
+
 .DS_Store
 .idea/
 .vscode/

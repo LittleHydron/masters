@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .base import BaseController, ControlCommand, PID
+from .base import (BaseController, ControlCommand, PID,
+                   DeadzoneCompensator)
 from ..detection.base import Detection
 
 
@@ -23,7 +24,7 @@ class IBVSController(BaseController):
         self,
         max_speed: float = 0.4,
         
-        kp_lateral: float = 0.7, ki_lateral: float = 0.02, kd_lateral: float = 0.12,
+        kp_lateral: float = 0.7, ki_lateral: float = 0.0, kd_lateral: float = 0.12,
         kp_vertical: float = 0.7, ki_vertical: float = 0.02, kd_vertical: float = 0.12,
         kp_yaw: float = 0.5, ki_yaw: float = 0.0, kd_yaw: float = 0.08,
         
@@ -32,9 +33,14 @@ class IBVSController(BaseController):
         approach_fill: float = 0.55,
         blind_fill: float = 0.75,
         centering_tolerance: float = 0.08,
+        vertical_bias: float = 0.0,
+        min_lateral: float = 0.0,
         blind_duration: float = 1.8,
+        near_throttle: float = 0.6,
+        align_throttle: float = 0.25,
+        **kw,
     ) -> None:
-        super().__init__(max_speed=max_speed)
+        super().__init__(max_speed=max_speed, **kw)
         self.pid_lateral = PID(kp_lateral, ki_lateral, kd_lateral)
         self.pid_vertical = PID(kp_vertical, ki_vertical, kd_vertical)
         self.pid_yaw = PID(kp_yaw, ki_yaw, kd_yaw)
@@ -43,7 +49,14 @@ class IBVSController(BaseController):
         self.approach_fill = approach_fill
         self.blind_fill = blind_fill
         self.centering_tolerance = centering_tolerance
+        self.vertical_bias = vertical_bias
+        self.min_lateral = min_lateral
+        self._dz_lateral = DeadzoneCompensator(
+            dead=min_lateral, eps=centering_tolerance * kp_lateral,
+            limit=max_speed)
         self.blind_duration = blind_duration
+        self.near_throttle = near_throttle
+        self.align_throttle = align_throttle
 
         self._blind_timer = 0.0
         self._arc_dir = 0.0
@@ -58,6 +71,7 @@ class IBVSController(BaseController):
         self._blind_timer = 0.0
         self._lost_frames = 0
         self._last_fill = 0.0
+        self._dz_lateral.reset()
 
     @staticmethod
     def _shape_features(det: Detection) -> tuple[float, float]:
@@ -74,14 +88,11 @@ class IBVSController(BaseController):
                 return 0.0, 0.0
             roundness = minor / major
 
-            # Проєкція велика вісь на горизонталь: якщо еліпс витягнутий
-            # вертикально, дрон дивиться на обруч збоку.
             theta = np.deg2rad(angle)
             if axis_a >= axis_b:
                 major_dx = abs(np.sin(theta))
             else:
                 major_dx = abs(np.cos(theta))
-            # major_dx ~1 -> велика вісь горизонтальна -> сплюснуто вертикально
             skew = (1.0 - roundness) * (1.0 - 2.0 * major_dx)
             return float(roundness), float(skew)
 
@@ -101,7 +112,7 @@ class IBVSController(BaseController):
         cx, cy = detection.center
 
         err_x = (cx - w / 2.0) / (w / 2.0)
-        err_y = (cy - h / 2.0) / (h / 2.0)
+        err_y = (cy - h / 2.0) / (h / 2.0) - self.vertical_bias
 
         roundness, skew = self._shape_features(detection)
         
@@ -114,7 +125,6 @@ class IBVSController(BaseController):
             "roundness": roundness, "skew": skew, "fill": fill,
         }
 
-        # --- сліпа фаза: ціль надто близько, щоб її бачити цілком ---
         if fill >= self.blind_fill:
             self._blind_timer = self.blind_duration
             return ControlCommand(
@@ -123,14 +133,15 @@ class IBVSController(BaseController):
                 diagnostics=diagnostics,
             )
 
-        vertical = -self.pid_vertical(err_y, dt)  # екранний y вниз
-        centered = abs(err_x) < self.centering_tolerance and abs(err_y) < self.centering_tolerance
+        vertical = -self.pid_vertical(err_y, dt)
+        centered = abs(err_x) < self.centering_tolerance
         aligned = roundness >= self.roundness_target
 
         if aligned and centered:
-            forward = self.max_speed * (1.0 if fill < self.approach_fill else 0.6)
+            forward = self.max_speed * (1.0 if fill < self.approach_fill
+                                        else self.near_throttle)
             return ControlCommand(
-                lateral=self.pid_lateral(err_x, dt),
+                lateral=self._lateral(err_x, dt),
                 forward=forward,
                 vertical=vertical,
                 phase="APPROACH",
@@ -143,10 +154,12 @@ class IBVSController(BaseController):
         deficit = max(0.0, self.roundness_target - roundness)
         arc = float(np.clip(self._arc_dir * deficit * 2.0,
                             -self.max_speed * 0.7, self.max_speed * 0.7))
-        lateral = arc
+        lateral = float(np.clip(arc + self._lateral(err_x, dt),
+                                -self.max_speed, self.max_speed))
         yaw = float(np.clip(self.pid_yaw(err_x, dt), -1.0, 1.0))
 
-        forward = 0.0 if roundness < self.roundness_target * 0.9 else self.max_speed * 0.25
+        forward = (0.0 if roundness < self.roundness_target * 0.9
+                   else self.max_speed * self.align_throttle)
 
         return ControlCommand(
             lateral=lateral, forward=forward, vertical=vertical, yaw=yaw,
@@ -155,6 +168,15 @@ class IBVSController(BaseController):
                    f"зсув ({err_x:+.2f},{err_y:+.2f})",
             diagnostics=diagnostics,
         )
+
+    def _lateral(self, err_x: float, dt: float) -> float:
+        """Бічна команда, дотягнута через мертву зону приводу.
+
+        Дотяжку робить `DeadzoneCompensator` — афінним зсувом, а не
+        підлогою. Підлога робила з каналу реле: будь-яка помилка, хоч
+        0.002, хоч 0.14, давала однакові повні 8 (політ 01.10).
+        """
+        return self._dz_lateral(self.pid_lateral(err_x, dt))
 
     def _handle_lost(self, dt: float) -> ControlCommand:
         """Ціль зникла: або ми вже в сліпій фазі, або треба шукати."""
@@ -168,8 +190,6 @@ class IBVSController(BaseController):
                 diagnostics={"blind_timer": self._blind_timer},
             )
 
-        # Ціль щойно зникла не з близької дистанції — коротка пауза,
-        # щоб не реагувати на одиничний пропуск детекції.
         if self._lost_frames < 5:
             return ControlCommand(
                 phase="HOLD", reason="ціль втрачено, утримання",

@@ -18,18 +18,14 @@ def procedural_room(w: int, h: int, rng: np.random.Generator,
                     distractor_circles: bool = True) -> np.ndarray:
     r = rng.random()
     if r < 0.40:
-        # ТЕПЛИЙ фон: відтінок 5-35 (жовтий/помаранчевий/бежевий) —
-        # той самий діапазон, що й у проблемній сцені.
         hue = rng.uniform(5, 35)
         sat = rng.uniform(25, 110)
         val = rng.uniform(140, 240)
     elif r < 0.55:
-        # Холодний фон: блакитний/зеленуватий.
         hue = rng.uniform(80, 130)
         sat = rng.uniform(20, 90)
         val = rng.uniform(110, 225)
     else:
-        # Нейтральна сірувата стіна.
         hue = rng.uniform(0, 180)
         sat = rng.uniform(0, 30)
         val = rng.uniform(95, 220)
@@ -39,7 +35,6 @@ def procedural_room(w: int, h: int, rng: np.random.Generator,
     wall = np.clip(wall, 40, 245)
     img = np.ones((h, w, 3), np.float64) * wall
 
-    # Вертикальний градієнт освітлення.
     grad = np.linspace(rng.uniform(0.75, 1.0), rng.uniform(0.9, 1.15), h)
     img *= grad[:, None, None]
 
@@ -52,7 +47,6 @@ def procedural_room(w: int, h: int, rng: np.random.Generator,
              tuple(float(c) for c in np.clip(floor * 0.6, 0, 255)),
              max(1, int(h * 0.006)))
 
-    # Прямокутники й дверні отвори.
     for _ in range(rng.integers(2, 8)):
         x1 = int(rng.uniform(0, w)); y1 = int(rng.uniform(0, h))
         x2 = int(np.clip(x1 + rng.uniform(0.05, 0.45) * w, 0, w))
@@ -61,7 +55,6 @@ def procedural_room(w: int, h: int, rng: np.random.Generator,
         col = np.clip(g + rng.normal(0, 22, 3), 25, 240)
         cv2.rectangle(img, (x1, y1), (x2, y2), tuple(float(c) for c in col), -1)
 
-    # Довгі лінії:
     for _ in range(rng.integers(3, 14)):
         p1 = (int(rng.uniform(0, w)), int(rng.uniform(0, h)))
         p2 = (int(rng.uniform(0, w)), int(rng.uniform(0, h)))
@@ -70,7 +63,6 @@ def procedural_room(w: int, h: int, rng: np.random.Generator,
         cv2.line(img, p1, p2, tuple(float(c) for c in col),
                  int(rng.integers(1, 5)))
 
-    # Кола/овали на фоні:
     for _ in range(rng.integers(0, 4) if distractor_circles else 0):
         c = (int(rng.uniform(0, w)), int(rng.uniform(0, h)))
         ax = (int(rng.uniform(10, w * 0.2)), int(rng.uniform(10, h * 0.2)))

@@ -18,7 +18,6 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-# A4 у міліметрах.
 A4_W_MM, A4_H_MM = 210.0, 297.0
 DPI = 300
 
@@ -41,8 +40,6 @@ def main() -> int:
     board_w, board_h = args.cols * sq, args.rows * sq
     page_w, page_h = mm_to_px(A4_W_MM), mm_to_px(A4_H_MM)
 
-    # Дошка часто ширша за високу — тоді сторінка має бути альбомна.
-    # Без цього патерн «не влазить» суто через орієнтацію.
     margin = mm_to_px(10.0)
     if board_w > page_w - margin and board_w <= page_h - margin:
         page_w, page_h = page_h, page_w
@@ -65,7 +62,6 @@ def main() -> int:
             y0, x0 = oy + r * sq, ox + c * sq
             page[y0:y0 + sq, x0:x0 + sq] = 0
 
-    # Підпис із параметрами — щоб не переплутати, якщо надрукуєте кілька.
     txt = (f"{args.cols}x{args.rows} squares, {args.square_mm:.0f} mm  |  "
            f"inner corners {args.cols - 1}x{args.rows - 1}  |  "
            f"PRINT AT 100%, THEN MEASURE")
@@ -77,7 +73,6 @@ def main() -> int:
     png = out.with_suffix(".png")
     cv2.imwrite(str(png), page)
 
-    # PDF через PIL, щоб фізичний розмір сторінки був коректний.
     try:
         from PIL import Image
         Image.open(png).save(out, "PDF", resolution=DPI)

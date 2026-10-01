@@ -67,9 +67,6 @@ def main() -> int:
         if not ok:
             break
         idx += 1
-        # У режимі трекінгу пропускати кадри НЕ можна: трекер будує
-        # історію на послідовних кадрах, а прорідження її рве.
-        # Тому детекція йде на кожному кадрі, а зберігаємо кожен N-й.
         keep = (idx % args.every == 0)
         if not args.track and not keep:
             continue
@@ -101,7 +98,6 @@ def main() -> int:
             cv2.putText(vis, f"{conf:.2f}", (x1, max(24, y1 - 10)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 230, 0), 2)
         else:
-            # Рамка по периметру — щоб промах було видно з першого погляду.
             cv2.rectangle(vis, (0, 0), (vis.shape[1] - 1, vis.shape[0] - 1),
                           (0, 0, 235), 8)
             cv2.putText(vis, "NO DETECTION", (24, 52),

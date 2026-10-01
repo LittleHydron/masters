@@ -38,10 +38,7 @@ def main() -> int:
     args = ap.parse_args()
 
     cols, rows = args.pattern
-    # Модель дошки в міліметрах; масштаб задає реальний розмір клітинки.
     objp = np.zeros((rows * cols, 3), np.float32)
-    # Явний float32: множення на float-аргумент дає float64, а
-    # calibrateCamera на такому масиві падає без повідомлення.
     objp[:, :2] = (np.mgrid[0:cols, 0:rows].T.reshape(-1, 2)
                    * args.square).astype(np.float32)
 
@@ -89,12 +86,9 @@ def main() -> int:
     rms, K, dist, rvecs, tvecs = cv2.calibrateCamera(
         obj_points, img_points, (w, h), None, None)
 
-    # Похибка перепроєкції по кожному ракурсу — так видно викиди.
     errs = []
     for i in range(len(obj_points)):
         proj, _ = cv2.projectPoints(obj_points[i], rvecs[i], tvecs[i], K, dist)
-        # Обидва масиви зводимо до (N,2): projectPoints і findChessboardCorners
-        # повертають різні форми, і cv2.norm на них падає.
         a = np.asarray(proj, dtype=np.float64).reshape(-1, 2)
         b = np.asarray(img_points[i], dtype=np.float64).reshape(-1, 2)
         errs.append(float(np.sqrt(((a - b) ** 2).sum(axis=1)).mean()))

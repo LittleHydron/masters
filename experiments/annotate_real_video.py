@@ -42,7 +42,6 @@ def load_calib(path: str | None, w: int, h: int) -> np.ndarray:
     if path:
         d = json.loads(Path(path).read_text(encoding="utf-8"))
         K = np.array(d["K"], dtype=np.float64)
-        # Калібрування зроблене на іншій роздільності — масштабуємо.
         if d["width"] != w or d["height"] != h:
             K = K.copy()
             K[0, :] *= w / d["width"]
@@ -180,13 +179,10 @@ def main() -> int:
                            cv2.MARKER_CROSS, 18, 2)
             cv2.putText(canvas, f"{det.confidence:.2f}", (x1, max(18, y1 - 8)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 230, 0), 2)
-            # Центр кадру — ціль для вирівнювання.
             cv2.drawMarker(canvas, (w // 2, h // 2), (110, 110, 110),
                            cv2.MARKER_TILTED_CROSS, 14, 1)
 
             if pose is not None:
-                # Обидві гілки нормалі: суцільна — обрана, пунктир —
-                # дзеркальна. Візуалізує двозначність розкладу коніки.
                 for br, style in ((pose, True), (pose.alternative, False)):
                     if br is None:
                         continue
@@ -204,8 +200,6 @@ def main() -> int:
                                      int(a[1] + (b[1] - a[1]) * t))
                                 cv2.circle(canvas, q, 2, (0, 140, 200), -1)
 
-        # Панель праворуч. Шрифти масштабуємо під висоту кадру,
-        # інакше на 1080p підписи нечитабельні.
         sc = h / 720.0
         px = w + int(16 * sc)
         F = cv2.FONT_HERSHEY_SIMPLEX

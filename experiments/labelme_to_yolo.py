@@ -59,8 +59,6 @@ def main() -> int:
                 continue
             xs = [p[0] for p in pts]
             ys = [p[1] for p in pts]
-            # Працює і для rectangle (2 точки), і для полігона (N точок):
-            # беремо обгортковий прямокутник.
             x1, x2 = min(xs), max(xs)
             y1, y2 = min(ys), max(ys)
             bw, bh = (x2 - x1) / w, (y2 - y1) / h

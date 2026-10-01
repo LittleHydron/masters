@@ -20,9 +20,9 @@ import numpy as np
 class HoopSpec:
     """Фізичні параметри цілі. За замовчуванням — CSP 89 см."""
 
-    diameter: float = 0.89      # м, зовнішній діаметр
-    tube_diameter: float = 0.020  # м, товщина трубки
-    color_bgr: tuple[int, int, int] = (40, 40, 200)  # насичений червоний
+    diameter: float = 0.89
+    tube_diameter: float = 0.020
+    color_bgr: tuple[int, int, int] = (40, 40, 200)
 
     @property
     def radius(self) -> float:
@@ -37,10 +37,10 @@ class HoopSpec:
 class RenderResult:
     image: np.ndarray
     bbox: tuple[float, float, float, float]
-    ellipse: tuple  # ((cx,cy),(a,b),angle) — зовнішній контур
-    position: np.ndarray   # (3,) центр обруча в системі камери
-    normal: np.ndarray     # (3,) нормаль площини обруча
-    visible_ratio: float   # частка контуру, що потрапила в кадр
+    ellipse: tuple
+    position: np.ndarray
+    normal: np.ndarray
+    visible_ratio: float
 
 
 def look_at_normal(tilt_deg: float, pan_deg: float) -> np.ndarray:
@@ -86,7 +86,7 @@ def render_hoop(
     )
 
     if np.any(ring[:, 2] <= 0.15):
-        return None  # частина обруча за камерою
+        return None
 
     proj = (K @ ring.T).T
     pts = proj[:, :2] / proj[:, 2:3]
@@ -94,12 +94,7 @@ def render_hoop(
     if not np.all(np.isfinite(pts)):
         return None
 
-    # Товщина трубки в пікселях змінюється вздовж контуру: ближчі
-    # ділянки товщі. Малюємо посегментно, інакше нахилений обруч
-    # виглядав би неправдоподібно.
     fx = float(K[0, 0])
-    # Мінімум 2 px: тонша лінія практично не читається після
-    # компресії й розмиття, і модель не має що вчити.
     thickness = np.maximum(2.0, spec.tube_radius * 2.0 * fx / ring[:, 2])
 
     inside = ((pts[:, 0] >= -w * 0.5) & (pts[:, 0] <= w * 1.5)
@@ -108,7 +103,6 @@ def render_hoop(
         return None
 
     base = np.array(spec.color_bgr, dtype=np.float64)
-    # Освітлення: ділянки, нахилені до камери, світліші.
     light_dir = np.array([0.3, -0.6, -0.75])
     light_dir /= np.linalg.norm(light_dir)
 
@@ -119,11 +113,8 @@ def render_hoop(
         p2 = tuple(int(round(c)) for c in pts[j])
 
         if shading:
-            # Напрямок від осі обруча до точки — нормаль трубки.
             radial = ring[i] - position
             rn = radial / max(1e-9, np.linalg.norm(radial))
-            # Менший діапазон затемнення: сильна тінь робить тонку
-            # трубку майже невидимою на темному фоні.
             lam = 0.82 + 0.28 * max(0.0, float(np.dot(rn, -light_dir)))
             color = np.clip(base * lam, 0, 255)
         else:
@@ -133,8 +124,6 @@ def render_hoop(
                  int(round((thickness[i] + thickness[j]) / 2.0)),
                  lineType=cv2.LINE_AA)
 
-    # Легке змішування з фоном: різкий контур виглядає «наклеєним»
-    # і модель починає ловити саме різкість краю, а не форму.
     alpha = float(rng.uniform(0.92, 1.0))
     img = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
 

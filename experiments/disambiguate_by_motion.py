@@ -119,7 +119,6 @@ def main() -> int:
         n_true = np.array(rec["normal"], dtype=float)
         n_true /= np.linalg.norm(n_true)
 
-        # Кадр 1: істинний еліпс -> дві гілки розв'язку.
         e1 = ellipse_from_pose(pos, n_true, radius, K)
         if e1 is None:
             stats["render_failed"] += 1
@@ -146,13 +145,11 @@ def main() -> int:
         branches = [est, est.alternative]
         stats["total"] += 1
 
-        # Зсув камери. Бічний = перпендикулярно осі огляду.
         if args.axial:
             shift = np.array([0.0, 0.0, args.shift])
         else:
             shift = np.array([args.shift, 0.0, 0.0])
 
-        # Кадр 2: ІСТИННИЙ еліпс після зсуву (те, що камера побачить).
         pos2_true = pos - shift
         e2_obs = ellipse_from_pose(pos2_true, n_true, radius, K)
         if e2_obs is not None and args.noise_px > 0:
@@ -165,17 +162,13 @@ def main() -> int:
             stats["total"] -= 1
             continue
 
-        # Прогноз кожної гілки: переносимо ЇЇ позу на той самий зсув.
         res = []
         for b in branches:
             p2 = b.position - shift
             e2_pred = ellipse_from_pose(p2, b.normal, radius, K)
             res.append(np.inf if e2_pred is None else residual(e2_pred, e2_obs))
 
-        # Яка гілка ближча до істини — еталон для перевірки.
         align = [abs(float(b.normal @ n_true)) for b in branches]
-        # Знак нормалі не визначений однозначно, тому беремо |cos|;
-        # правильна гілка — з максимальним збігом напрямку.
         truth_idx = int(np.argmax(align))
 
         if not np.isfinite(res[0]) and not np.isfinite(res[1]):
@@ -184,7 +177,6 @@ def main() -> int:
             continue
 
         pick = int(np.argmin(res))
-        # Якщо гілки практично збігаються — розрізняти нічого.
         if abs(align[0] - align[1]) < 1e-3:
             stats["tie"] += 1
             continue

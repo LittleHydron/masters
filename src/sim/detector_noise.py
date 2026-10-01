@@ -22,7 +22,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-# Виміряно на synthetic_holdout моделлю yolov8n_mixed (273 цілі).
 _DIST_M = np.array([1.5, 2.5, 3.5, 5.0])
 _RECALL = np.array([0.667, 0.617, 0.507, 0.353])
 
@@ -32,9 +31,9 @@ class NoiseParams:
     """Параметри шуму. `enabled=False` повертає ідеальний детектор."""
 
     enabled: bool = True
-    jitter_px: float = 2.5      # тремтіння кутів бокса, пікселі
-    recall_scale: float = 1.0   # <1 — гірший детектор, >1 — кращий
-    false_positive_rate: float = 0.0  # хибні спрацювання на кадр
+    jitter_px: float = 2.5
+    recall_scale: float = 1.0
+    false_positive_rate: float = 0.0
 
 
 def detection_probability(distance: float, scale: float = 1.0) -> float:
@@ -58,7 +57,6 @@ def apply(detection, distance: float, rng: np.random.Generator,
     if params.jitter_px <= 0:
         return detection
 
-    # Тремтіння: незалежний зсув кутів бокса й центру еліпса.
     x1, y1, x2, y2 = detection.bbox
     j = rng.normal(0, params.jitter_px, 4)
     bbox = (x1 + j[0], y1 + j[1], x2 + j[2], y2 + j[3])
@@ -69,7 +67,6 @@ def apply(detection, distance: float, rng: np.random.Generator,
     if ell is not None:
         (cx, cy), (a, b), ang = ell
         e = rng.normal(0, params.jitter_px, 2)
-        # Осі тремтять слабше за центр: розмір оцінюється стабільніше.
         s = rng.normal(0, params.jitter_px * 0.5, 2)
         ell = ((cx + e[0], cy + e[1]),
                (max(2.0, a + s[0]), max(2.0, b + s[1])), ang)

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .base import BaseController, ControlCommand, PID
+from .base import (BaseController, ControlCommand, PID,
+                   DeadzoneCompensator)
 from ..pose.pnp_solver import PnPSolver, PoseEstimate
 
 
@@ -20,26 +21,36 @@ class PBVSController(BaseController):
         self,
         solver: PnPSolver,
         max_speed: float = 0.4,
-        kp_lateral: float = 0.8, ki_lateral: float = 0.03, kd_lateral: float = 0.15,
+        kp_lateral: float = 0.8, ki_lateral: float = 0.0, kd_lateral: float = 0.15,
         kp_vertical: float = 0.8, ki_vertical: float = 0.03, kd_vertical: float = 0.15,
         kp_forward: float = 0.5, ki_forward: float = 0.0, kd_forward: float = 0.1,
         kp_yaw: float = 1.6, ki_yaw: float = 0.0, kd_yaw: float = 0.25,
         standoff_distance: float = 1.5,
         axis_tolerance_deg: float = 12.0,
+        axis_offset_tolerance: float = 0.35,
+        trust_normal: bool = True,
+        vertical_bias: float = 0.0,
         lateral_tolerance: float = 0.12,
+        min_lateral: float = 0.0,
         commit_distance: float = 1.2,
         blind_duration: float = 1.8,
+        **kw,
     ) -> None:
-        super().__init__(max_speed=max_speed)
+        super().__init__(max_speed=max_speed, **kw)
         self.solver = solver
         self.pid_lateral = PID(kp_lateral, ki_lateral, kd_lateral)
         self.pid_vertical = PID(kp_vertical, ki_vertical, kd_vertical)
         self.pid_forward = PID(kp_forward, ki_forward, kd_forward)
-        # Поворот, що утримує ціль у центрі кадру під час обльоту.
         self.pid_yaw = PID(kp_yaw, ki_yaw, kd_yaw)
+        self._dz_lateral = DeadzoneCompensator(
+            dead=min_lateral, eps=lateral_tolerance * kp_lateral,
+            limit=max_speed)
 
         self.standoff_distance = standoff_distance
         self.axis_tolerance = np.deg2rad(axis_tolerance_deg)
+        self.trust_normal = trust_normal
+        self.vertical_bias = vertical_bias
+        self.axis_offset_tolerance = axis_offset_tolerance
         self.lateral_tolerance = lateral_tolerance
         self.commit_distance = commit_distance
         self.blind_duration = blind_duration
@@ -61,6 +72,7 @@ class PBVSController(BaseController):
         self._lost_frames = 0
         self._committed = False
         self._prev_normal = None
+        self._dz_lateral.reset()
 
     def _disambiguate(self, pose: PoseEstimate) -> PoseEstimate:
         """Зняти двозначність кругової цілі часовою консистентністю.
@@ -78,7 +90,6 @@ class PBVSController(BaseController):
             return float(abs(np.dot(p.normal, self._prev_normal)))
 
         best = max([pose, pose.alternative], key=consistency)
-        # Згладжуємо опорну нормаль, щоб один шумний кадр не перемкнув гілку.
         self._prev_normal = 0.7 * self._prev_normal + 0.3 * best.normal
         n = np.linalg.norm(self._prev_normal)
         if n > 1e-9:
@@ -101,6 +112,7 @@ class PBVSController(BaseController):
         self._lost_frames = 0
 
         dx, dy = pose.lateral_offset
+        dy -= self.vertical_bias
         distance = pose.distance
         approach_angle = pose.approach_angle
 
@@ -122,18 +134,31 @@ class PBVSController(BaseController):
                 diagnostics=diagnostics,
             )
 
-        lateral = self.pid_lateral(dx, dt)
+        lateral = self._dz_lateral(self.pid_lateral(dx, dt))
         vertical = -self.pid_vertical(dy, dt)
+
+        if not self.trust_normal:
+            forward = self.pid_forward(distance - self.commit_distance, dt)
+            return ControlCommand(
+                lateral=lateral, forward=max(0.0, forward), vertical=vertical,
+                phase="APPROACH",
+                reason=f"зближення до {self.commit_distance:.1f} м "
+                       f"(нормаль ігнорується)",
+                diagnostics=diagnostics,
+            )
 
         on_axis = approach_angle < self.axis_tolerance
         centered = abs(dx) < self.lateral_tolerance and abs(dy) < self.lateral_tolerance
 
         n_to_cam = pose.normal if pose.normal[2] < 0 else -pose.normal
         ap = pose.position + n_to_cam * self.standoff_distance
+        axis_offset = float(np.linalg.norm(
+            np.cross(pose.position, n_to_cam)))
+        diagnostics["axis_offset"] = axis_offset
 
-        at_point = float(np.linalg.norm(ap)) < 0.5
+        at_point = axis_offset < self.axis_offset_tolerance
 
-        if on_axis and (centered or at_point):
+        if on_axis or at_point:
             forward = self.pid_forward(distance - self.commit_distance, dt)
             return ControlCommand(
                 lateral=lateral, forward=max(0.0, forward), vertical=vertical,
@@ -149,7 +174,7 @@ class PBVSController(BaseController):
         ex, ey, ez = float(approach_point[0]), float(approach_point[1]), \
             float(approach_point[2])
 
-        lateral = float(np.clip(self.pid_lateral(ex, dt),
+        lateral = float(np.clip(self._dz_lateral(self.pid_lateral(ex, dt)),
                                 -self.max_speed, self.max_speed))
         vertical = float(np.clip(-self.pid_vertical(ey, dt),
                                  -self.max_speed, self.max_speed))
@@ -190,7 +215,8 @@ class PBVSController(BaseController):
             )
 
         return ControlCommand(
-            yaw=0.25, phase="SEARCH",
-            reason=f"пошук цілі ({self._lost_frames} кадрів)",
+            forward=self.max_speed * 0.5, phase="SEARCH",
+            reason=f"ціль не видно ({self._lost_frames} кадрів), "
+                   "зближення наосліп",
             diagnostics={"lost_frames": self._lost_frames},
         )

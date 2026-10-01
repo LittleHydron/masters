@@ -25,11 +25,11 @@ import numpy as np
 class TelloProfile:
     """Параметри камери DJI Robomaster TT (Tello Talent)."""
 
-    width: int = 1280           # паспортні 720p
+    width: int = 1280
     height: int = 720
-    blur_sigma: float = 0.8     # дешева оптика
-    noise_sigma: float = 4.0    # малий сенсор
-    jpeg_quality: int = 65      # H.264 по Wi-Fi ~ таких артефактів
+    blur_sigma: float = 0.8
+    noise_sigma: float = 4.0
+    jpeg_quality: int = 65
     fps: int = 30
 
 
@@ -38,8 +38,6 @@ def degrade(frame: np.ndarray, prof: TelloProfile,
     """Один кадр -> кадр «як з Tello»."""
     h, w = frame.shape[:2]
     if (w, h) != (prof.width, prof.height):
-        # AREA — правильний фільтр для зменшення: усереднює, а не
-        # семплює, тож не породжує муару на дрібних деталях.
         frame = cv2.resize(frame, (prof.width, prof.height),
                            interpolation=cv2.INTER_AREA)
 

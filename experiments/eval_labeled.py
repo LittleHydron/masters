@@ -132,8 +132,6 @@ def main() -> int:
         return (1 + b2) * p * r / (b2 * p + r)
 
     scenes = ["Kitchen", "Balkony", "Outside", "Room"]
-    # Агрегуємо по ВСІХ кадрах, а не усереднюємо F1 по сценах:
-    # сцени різного розміру, і середнє з середніх спотворює.
     rows = []
     for name, per in results.items():
         tp = sum(per[s]["tp"] for s in scenes if s in per)
